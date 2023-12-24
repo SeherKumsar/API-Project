@@ -1,16 +1,76 @@
+import base64
+from io import BytesIO
+from matplotlib import pyplot as plt
 import requests
 import datetime
 from pandas import DataFrame
 
+# from config.config import NASA_API_KEY
+from urllib.parse import urljoin
+from PIL import Image as PILImage
+from IPython.display import Image as IPImage, display
+
+
 def return_api_result(url, params):
-    r = requests.get(url,
-                     params=params)
+    r = requests.get(url, params=params)
 
     if r.status_code != 200:
         raise requests.exceptions.HTTPError(r.reason, r.url)
-
     else:
         return r.json()
+    
+
+def get_nasa_images(api_key, date=None):
+    host = 'https://api.nasa.gov'
+    url = urljoin(host + '/planetary/', 'apod')
+
+    try:
+        r = requests.get(url, params={'api_key': api_key, 'date': date})
+        r.raise_for_status()  # Hata durumlarını kontrol et
+
+        return r.json()
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error during API request: {e}")
+        return None
+
+def display_nasa_thumbnail(api_key, date=None):
+    result = get_nasa_images(api_key, date)
+
+    if result and 'url' in result:
+        image_url = result['url']
+
+        # Download the image
+        image_response = requests.get(image_url)
+        image_response.raise_for_status()
+
+        # Open the image using PIL
+        img = PILImage.open(BytesIO(image_response.content))
+
+        # Display a thumbnail using IPython.display.Image
+        img.thumbnail((200, 200))  # Adjust the size as needed
+        img_byte_array = BytesIO()
+        img.save(img_byte_array, format='PNG')
+        img_data = img_byte_array.getvalue()
+
+        display(IPImage(data=img_data))
+    else:
+        print("Could not retrieve image.")
+
+def get_planet_data(api_key, planet_name):
+    base_url = 'https://api.le-systeme-solaire.net/rest/bodies/'
+    
+    try:
+        url = f"{base_url}{planet_name.lower()}"
+        r = requests.get(url)
+        r.raise_for_status()
+
+        return r.json()
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error during API request: {e}")
+        return None
+    
 
 def closes_approach(date_min='now', date_max='+60', dist_min=None, dist_max='0.05', h_min=None, h_max=None,
                    v_inf_min=None, v_inf_max=None, v_rel_min=None, v_rel_max=None, orbit_class=None, pha=False,
