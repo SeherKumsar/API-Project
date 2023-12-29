@@ -4,72 +4,58 @@ from matplotlib import pyplot as plt
 import requests
 import datetime
 from pandas import DataFrame
+from IPython.display import Image, display
 
 # from config.config import NASA_API_KEY
-from urllib.parse import urljoin
-from PIL import Image as PILImage
-from IPython.display import Image as IPImage, display
 
 
 def return_api_result(url, params):
-    r = requests.get(url, params=params)
+    """
+    URL ve parametrelerle bir HTTP GET isteği yapar ve API'nin yanıtını işler.
+    :param url: API URL'si
+    :param params: API isteği için parametreler
+    """
+    r = requests.get(url, params=params) # HTTP GET isteği
 
-    if r.status_code != 200:
-        raise requests.exceptions.HTTPError(r.reason, r.url)
-    else:
-        return r.json()
+    if r.status_code != 200: # HTTP 200 OK yanıtı değilse
+        raise requests.exceptions.HTTPError(r.reason, r.url) # Hatayı fırlat
+    else: # HTTP 200 OK yanıtı ise
+        return r.json() # JSON verilerini döndür
+
+
+def get_apod_image(api_key, date=None):
+    """
+    NASA'nın Astronomy Picture of the Day (APOD) API kullanarak bir resim alır ve görüntüler.
     
-
-def get_nasa_images(api_key, date=None):
-    host = 'https://api.nasa.gov'
-    url = urljoin(host + '/planetary/', 'apod')
-
-    try:
-        r = requests.get(url, params={'api_key': api_key, 'date': date})
-        r.raise_for_status()  # Hata durumlarını kontrol et
-
-        return r.json()
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error during API request: {e}")
-        return None
-
-def display_nasa_thumbnail(api_key, date=None):
-    result = get_nasa_images(api_key, date)
-
-    if result and 'url' in result:
-        image_url = result['url']
-
-        # Download the image
-        image_response = requests.get(image_url)
-        image_response.raise_for_status()
-
-        # Open the image using PIL
-        img = PILImage.open(BytesIO(image_response.content))
-
-        # Display a thumbnail using IPython.display.Image
-        img.thumbnail((200, 200))  # Adjust the size as needed
-        img_byte_array = BytesIO()
-        img.save(img_byte_array, format='PNG')
-        img_data = img_byte_array.getvalue()
-
-        display(IPImage(data=img_data))
-    else:
-        print("Could not retrieve image.")
-
-def get_planet_data(api_key, planet_name):
-    base_url = 'https://api.le-systeme-solaire.net/rest/bodies/'
+    Parameters:
+    - api_key (str): NASA API anahtarı.
+    - date (str): İsteğe bağlı, görüntü tarihi. 'YYYY-MM-DD' formatında olmalıdır.
     
-    try:
-        url = f"{base_url}{planet_name.lower()}"
-        r = requests.get(url)
-        r.raise_for_status()
+    """
+    endpoint = 'https://api.nasa.gov/planetary/apod'
 
-        return r.json()
+    # API isteği için parametreleri ayarla
+    params = {'api_key': api_key}
+    if date:
+        params['date'] = date
 
-    except requests.exceptions.RequestException as e:
-        print(f"Error during API request: {e}")
-        return None
+    # API'den veriyi al
+    api_result = return_api_result(url=endpoint, params=params)
+
+    # API'den dönen JSON verisini yazdır
+    print(api_result)
+
+    # API'den dönen veriyi kontrol et
+    if 'url' in api_result:
+        image_url = api_result['url']
+
+        # Resmi görüntüle
+        image = Image(url=image_url)
+        display(image)
+
+        return image
+    else:
+        return None  # Hata durumunda None döndür
     
 
 def closes_approach(date_min='now', date_max='+60', dist_min=None, dist_max='0.05', h_min=None, h_max=None,
@@ -77,135 +63,127 @@ def closes_approach(date_min='now', date_max='+60', dist_min=None, dist_max='0.0
                    nea=False, comet=False, nea_comet=False, neo=False, kind=None, spk=None, des=None,
                    body='Earth', sort='date', limit=None, fullname=False, return_df=False):
     r"""
-    Provides data for currently known close-approach data for all asteroids and comets in NASA's Jet Propulsion
-    Laboratory's (JPL) Small-Body Database.
-
+    NASA'nın Jet Propulsion Laboratory'nin (JPL) Small-Body Database'deki tüm asteroid ve kuyruklu yıldızlar için
+    bilinen yaklaşan geçiş verilerini sağlar.
+    
     Parameters
     ----------
     date_min : str, datetime, default 'now'
-        Excludes data earlier than the given date. Defaults to 'now', representing the current date, but can also be
-        a string representing a date in 'YYYY-MM-DD' format or 'YYYY-MM-DDThh:mm:ss' format or a datetime object.
+        Belirtilen tarihten önceki verileri hariç tutar. Varsayılan olarak 'now', yani mevcut tarihi temsil eder, ancak
+        aynı zamanda 'YYYY-MM-DD' formatında bir tarih veya 'YYYY-MM-DDThh:mm:ss' formatında bir tarih/saat veya bir
+        datetime nesnesi de olabilir.
     date_max :'str, datetime, 'now', default '+60'
-        Excludes data later than the given date. Defaults to '+60', representing 60 days after the :code:`date_min`
-        parameter. Accepts a string of '+D' where D represents the number of days or a string representing a date in
-        'YYYY-MM-DD' format or 'YYYY-MM-DDThh:mm:ss' format or a datetime object. 'now' is also an acceptable value
-        and will exclude date later than the current date.
-    dist_min : str, float, int, default None
-        Excludes data with an approach distance less than the given value (if provided). The default unit is AU
-        (astronomical units), and LD (lunar distance) is also available. For example, '0.05' or 0.05 would return
-        AU units whereas '0.05LD' would return LD units.
-    dist_max : str, float int, default None
-        Excludes data with an approach distance greater than the given value (if specified). The default unit is AU
-        (astronomical units), and LD (lunar distance) is also available. For example, '0.05' would return AU units
-        whereas '0.05LD' would return LD units.
-    h_min : float, int, default None
-        Exclude data from objects with H-values less than the given value.
-    h_max : float, int, default None
-        Exclude data from objects with H-values greater than the given value.
-    v_inf_min : float, int, default None
-        Exclude data with V-infinity less than this positive value in km/s
-    v_inf_max : float, int, default None
-        Exclude data with V-infinity greater than this positive value in km/s
-    v_rel_min : float, int, default None
-        Exclude data with V-relative less than this positive value in km/s
-    v_rel_max : float, int, default None
-        Exclude data with V-relative greater than this positive value in km/s
-    orbit_class : str
-        Limits data to specified orbit-class
-    pha : bool, default False
-        If True, limits the resulting data to only PHA objects
-    nea : bool, default False
-        If True, limits the returned data to only NEA objects
-    comet : bool, default False
-        If True, limits the returned data to comet objects only
-    nea_comet : bool, default False
-        If True, limits the returned data to NEA comet objects only
-    neo : bool, default False
-        If True, limits the returned data to only NEO objects
-    kind : str, {'a', 'an', 'au', 'c', 'cn', 'cu', 'n', 'u'}, default None
-        Filters returned data to specified type of object. Available options include 'a'=asteroid,
-        'an'=numbered-asteroids, 'au'=unnumbered-asteroids, 'c'=comets, 'cn'=numbered-comets, 'cu'=unnumbered-comets,
-        'n'=numbered-objects, and 'u'=unnumbered-objects
-    spk : str, int, default None
-        Return data only for the matching SPK-ID.
-    des : str, default None
-        Filters data to objects matching the given destination.
-    body : str, default "Earth"
-        Filters data to close-approaches of the specified body. 'ALL' or '*' returns all close-approaches to the
-        available bodies.
-    sort : str, {'date', 'dist', 'dist-min', 'v-inf', 'v-rel', 'h', 'object'}
-        Sorts the returned data by the specified field. Defaults to 'date' ascending. To sort by descending, add a '-'
-        in front of the sort value, for example, '-date'.
-    limit : int, default None
-        Limit data to the first number of results specified by the parameter. Must be greater than 0.
-    fullname : bool, default False
-        Includes the full-format object name/designation
-    return_df : bool, default False
-        If True, returns the 'data' field of the returned JSON data as a pandas DataFrame with column names extracted
-        from the 'fields' key of the returned JSON.
+        Belirtilen tarihten sonraki verileri hariç tutar. Varsayılan olarak '+60', :code:`tarih_min` parametresinden 60
+        gün sonrasını temsil eder. '+D' biçiminde bir dize kabul eder, burada D gün sayısını temsil eder veya 'YYYY-MM-DD'
+        formatında bir tarih veya 'YYYY-MM-DDThh:mm:ss' formatında bir tarih/saat veya bir datetime nesnesi olabilir.
+        'now' da kabul edilen bir değerdir ve mevcut tarihten sonraki verileri hariç tutar.
 
-    Raises
-    ------
-    ValueError
-        Raised if :code:`h_min` is greater than :code:`h_max`
-    ValueError
-        Raised if :code:`v_inf_min` parameter is greater than :code:`v_inf_max`
-    ValueError
-        Raised if :code:`v_rel_min` parameter is greater than :code:`v_rel_max`
-    ValueError
-        Raised if :code:`limit` parameter is 0 or less.
-    TypeError
-        Raised if :code:`limit` parameter is not an integer (if specified)
-    TypeError
-        Raised if :code:`pha` is not boolean (True or False)
-    TypeError
-        Raised if :code:`nea` is not boolean (True or False)
-    TypeError
-        Raised if :code:`comet` is not boolean (True or False)
-    TypeError
-        Raised if :code:`neo` is not boolean (True or False)
-    TypeError
-        Raised if :code:`fullname` is not boolean (True or False)
-    HTTPError
-        Raised if the returned status code of the resulting data is not 200 (success)
+    dist_min : str, float, int, default None
+        Belirtilen değerden küçük olan yaklaşım mesafesi verilerini hariç tutar (varsa). Varsayılan birim AU (astronomik birim) olup,
+        LD (lunar mesafe) de mevcuttur. Örneğin, '0.05' veya 0.05 AU birimleri döndürecektir, '0.05LD' LD birimlerini döndürür.
+    dist_max : str, float int, default None
+        Belirtilen değerden büyük olan yaklaşım mesafesi verilerini hariç tutar (varsa). Varsayılan birim AU (astronomik birim) olup,
+        LD (lunar mesafe) de mevcuttur. Örneğin, '0.05' AU birimlerini döndürecektir, '0.05LD' LD birimlerini döndürür.
+
+    h_min : float, int, default None
+        H değeri belirtilen değerden küçük olan nesnelerin verilerini hariç tutar.
+    h_max : float, int, default None
+        H değeri belirtilen değerden büyük olan nesnelerin verilerini hariç tutar.
+
+    v_inf_min : float, int, default None
+        Bu pozitif değerden küçük olan V-sonsuzluk değeri olan verileri hariç tutar (km/s).
+    v_inf_max : float, int, default None
+        Bu pozitif değerden büyük olan V-sonsuzluk değeri olan verileri hariç tutar (km/s).
+
+    v_rel_min : float, int, default None
+        Bu pozitif değerden küçük olan V-relatif değeri olan verileri hariç tutar (km/s).
+    v_rel_max : float, int, default None
+        Bu pozitif değerden büyük olan V-relatif değeri olan verileri hariç tutar (km/s).
+
+    orbit_class : str
+        Verileri belirtilen yörünge(orbit) sınıfına sınırlar.
+
+    pha : bool, default False
+        True ise, sonuç verilerini sadece PHA nesnelerine sınırlar.
+
+    nea : bool, default False
+        True ise, dönen verileri sadece NEA nesnelerine sınırlar.
+
+    comet : bool, default False
+        True ise, dönen verileri sadece kuyruklu yıldız nesnelerine sınırlar.
+
+    nea_comet : bool, default False
+        True ise, dönen verileri sadece NEA kuyruklu yıldız nesnelerine sınırlar.
+
+    neo : bool, default False
+        True ise, dönen verileri sadece NEO nesnelerine sınırlar.
+
+    kind : str, {'a', 'an', 'au', 'c', 'cn', 'cu', 'n', 'u'}, default None
+        Geri dönen verileri belirtilen nesne türüne filtreler. Kullanılabilir seçenekler arasında 'a'=asteroid,
+        'an'=numaralandırılmış-asteroidler, 'au'=numaralandırılmamış-asteroidler, 'c'=kuyruklu yıldızlar, 'cn'=numaralandırılmış-kuyruklu yıldızlar,
+        'cu'=numaralandırılmamış-kuyruklu yıldızlar, 'n'=numaralandırılmış nesneler ve 'u'=numaralandırılmamış nesneler bulunur.
+        
+    spk : str, int, default None
+        Yalnızca eşleşen SPK-ID için veri döndürür.
+
+    des : str, default None
+        Verileri verilen hedeflere eşleşen nesnelerle filtreler.
+
+    body : str, default "Earth"
+        Belirtilen cismin yaklaşan geçişlerine filtre uygular. 'ALL' veya '*' tüm mevcut cisimlere yapılan
+        yaklaşan geçişleri döndürür.
+
+    sort : str, {'date', 'dist', 'dist-min', 'v-inf', 'v-rel', 'h', 'object'}
+        Geri dönen verileri belirtilen alana göre sıralar. Varsayılan olarak 'date' artan olarak sıralanır.
+        Azalan olarak sıralamak için, sıralama değerinin önüne '-' ekleyin, örneğin, '-date'.
+
+    limit : int, default None
+        Parametre tarafından belirtilen sonuç sayısına göre verileri sınırlar. 0'dan büyük olmalıdır.
+
+    fullname : bool, default False
+        Tam biçimli nesne adını/tanımını içerir
+
+    return_df : bool, default False
+        True ise, JSON verilerinin 'data' alanını pandas DataFrame olarak döndürür, sütun adlarını
+        JSON verilerinin 'fields' anahtarından çıkarır.
+
+    
 
     Returns
     -------
     dict
-        Dictionary object representing the returned JSON data from the API.
+        API'den dönen JSON verilerini temsil eden sözlük nesnesi.
 
     Examples
     --------
-    # Get all close-approach object data in the year 2019 with a maximum approach distance of 0.01AU.
+    # 2019 yılında tüm yaklaşan nesne verilerini, maksimum yaklaşım mesafesi 0.01AU ile alın.
     >>> close_approach(date_min='2019-01-01', date_max='2019-12-31', dist_max=0.01)
-    # Get close-approach data for asteroid 433 Eros within 0.2AU from the years 1900 to 2100.
+    # Asteroid 433 Eros için 1900 ila 2100 yılları arasındaki 0.2AU'den az olan yaklaşan geçiş verilerini alın.
     >>> close_approach(des='433', date_min='1900-01-01', date_max='2100-01-01', dist_max=0.2)
-    # Return close-approach data from the beginning of 2000 to the beginning of 2020 as a pandas DataFrame.
+    # 2000'in başından 2020'nin başına kadar olan yaklaşan geçiş verilerini pandas DataFrame olarak döndürün.
     >>> close_approach(date_min='2000-01-01', date_max='2020-01-01', return_df=True)
 
     Notes
     -----
-    Each close-approach record is a list containing the following fields in the corresponding order:
+    Her yaklaşan geçiş kaydı, aşağıdaki sırayla gelen alanları içeren bir listedir:
 
-    * des - primary designation of the asteroid or comet (e.g., 443, 2000 SG344)
+    * des - asteroid veya kuyruklu yıldızın birincil adlandırması (örneğin, 443, 2000 SG344)
     * orbit_id - orbit ID
-    * jd - time of close-approach (JD Ephemeris Time)
-    * cd - time of close-approeach (formatted calendar date/time)
-    * dist - nominal approach distance (au)
-    * dist_min - minimum (3-sigma) approach distance (au)
-    * dist_max - maximum (3-sigma) approach distance (au)
-    * v_rel - velocity relative to the approach body at close approach (km/s)
-    * v_inf - velocity relative to a massless body (km/s)
-    * t_sigma_f - 3-sigma uncertainty in the time of close-approach (formatted in days, hours, and minutes;
-        days are not included if zero; example “13:02” is 13 hours 2 minutes; example “2_09:08” is 2 days 9 hours 8
-        minutes)
-    * body - name of the close-approach body (e.g., Earth)
-        * only output if the body query parameters is set to ALL
-    * h - absolute magnitude H (mag)
-    * fullname - formatted full-name/designation of the asteroid or comet
-        * optional - only output if requested with the appropriate query flag
-        * formatted with leading spaces for column alignment in monospaced font tables
-
+    * jd - yaklaşan geçişin zamanı (JD Ephemeris Time)
+    * cd - yaklaşan geçişin zamanı (formatted calendar date/time)
+    * dist - nominal yaklaşım mesafesi (au)
+    * dist_min - minimum (3-sigma) yaklaşım mesafesi (au)
+    * dist_max - maksimum (3-sigma) yaklaşım mesafesi (au)
+    * v_rel - yaklaşık geçişte hedefe göre göre hız (km/s)
+    * v_inf -  kütlesiz gövdeye göre hız (km/s)
+    * t_sigma_f - yaklaşan geçişin zamanındaki 3 sigma belirsizliği (gün, saat ve dakika olarak biçimlendirilmiş;
+        sıfırsa günler dahil değildir; örnek "13:02" 13 saat 2 dakika; örnek "2_09:08" 2 gün 9 saat 8 dakika)
+    * body - body - yaklaşan geçiş gövdesinin adı (örneğin, Earth)
+        * yalnızca body sorgu parametreleri ALL olarak ayarlandığında çıktı verilir
+    * h - mutlak büyüklük H (mag)
+    * fullname - asteroid veya kuyruklu yıldızın biçimlendirilmiş tam adı/tanımı
+        * optional - uygun flag query ile istendiğinde verilir
+        * monospace font tablolarındaki sütun hizalaması için önde boşluklarla biçimlendirilmiştir
     """
     url = 'https://ssd-api.jpl.nasa.gov/cad.api'
 
